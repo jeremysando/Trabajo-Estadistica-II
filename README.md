@@ -1,2 +1,2 @@
-# Trabajo-de-Estad-stica-II
+# Trabajo-de-Estadistica
 Estadística para el Análisis Político II
