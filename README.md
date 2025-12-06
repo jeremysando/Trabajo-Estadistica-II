@@ -28,4 +28,4 @@ A continuación, el diccionario de datos:
 
 El enlace para el dashboard es el siguiente:
 
-
+file:///Users/yuriani/Desktop/7mo%20ciclo/Estadi%CC%81stica%20II/trabajo_estadisticaII.html
