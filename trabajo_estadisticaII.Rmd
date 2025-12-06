@@ -1,0 +1,2214 @@
+---
+title: "Determinantes de la Confianza en la Policía en el Perú"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: yeti
+---
+
+```{r setup, include=FALSE}
+rm(list = ls()) 
+
+library(flexdashboard)
+library(tidyverse) 
+library(rio)      
+library(Rmisc)  
+library(sf)       
+library(broom)     
+library(gt)       
+library(sf)
+library(here)
+
+data = rio::import("/Users/yuriani/Desktop/7mo ciclo/Estadística II/data_limpia2.csv")
+
+data$Confianza_num = ifelse(data$Confianza_policia == "Confía", 1, 0)
+
+data$Confianza_policia = factor(data$Confianza_policia, levels = c("No Confía", "Confía")) 
+
+
+data$Departamento = as.factor(data$Departamento)
+data$Victimizacion = as.factor(data$Victimizacion)
+data$Inseguridad = as.factor(data$Inseguridad)
+data$Satisfaccion_democracia = as.factor(data$Satisfaccion_democracia)
+data$Sexo = as.factor(data$Sexo)
+data$Nivel_educativo = as.factor(data$Nivel_educativo)
+
+data_modelo = data %>%
+  filter(!is.na(Confianza_policia) & !is.na(Edad) & !is.na(Departamento) & !is.na(Victimizacion) & 
+           !is.na(Inseguridad) & !is.na(Satisfaccion_democracia) & !is.na(Sexo) & !is.na(Nivel_educativo))
+
+mapa_peru_sf = st_read(here("datos_mapa", "DEPARTAMENTOS_inei_geogpsperu_suyopomalia.shp"))
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(sf)     
+library(scales) 
+library(stringr) 
+
+# --- 1. TRANSFORMAR NOMBRES DE DEPARTAMENTOS ---
+data_mapa <- data %>%
+  # Convertir a mayúsculas y hacer correcciones específicas
+  mutate(
+    Departamento_limpio = case_when(
+      # Transformar a formato NOMBDEP (todo mayúsculas)
+      Departamento == "Amazonas" ~ "AMAZONAS",
+      Departamento == "Áncash" ~ "ANCASH",
+      Departamento == "Apurímac" ~ "APURIMAC", 
+      Departamento == "Arequipa" ~ "AREQUIPA",
+      Departamento == "Ayacucho" ~ "AYACUCHO",
+      Departamento == "Cajamarca" ~ "CAJAMARCA",
+      Departamento == "Callao" ~ "CALLAO",
+      Departamento == "Cusco" ~ "CUSCO",
+      Departamento == "Huancavelica" ~ "HUANCAVELICA",
+      Departamento == "Huánuco" ~ "HUANUCO",
+      Departamento == "Ica" ~ "ICA",
+      Departamento == "Junín" ~ "JUNIN",
+      Departamento == "La Libertad" ~ "LA LIBERTAD",
+      Departamento == "Lambayeque" ~ "LAMBAYEQUE",
+      Departamento == "Lima" ~ "LIMA",
+      Departamento == "Lima Metropolitana" ~ "LIMA",
+      Departamento == "Loreto" ~ "LORETO",
+      Departamento == "Madre de Dios" ~ "MADRE DE DIOS",
+      Departamento == "Moquegua" ~ "MOQUEGUA",
+      Departamento == "Pasco" ~ "PASCO",
+      Departamento == "Piura" ~ "PIURA",
+      Departamento == "Puno" ~ "PUNO",
+      Departamento == "San Martín" ~ "SAN MARTIN",
+      Departamento == "Tacna" ~ "TACNA",
+      Departamento == "Tumbes" ~ "TUMBES",
+      Departamento == "Ucayali" ~ "UCAYALI",
+      # Si hay algún otro formato, mantenerlo en mayúsculas
+      TRUE ~ toupper(Departamento)))
+```
+
+Visualizaciones {data-icon="fa-signal"}
+===================================== 
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Mapa de calor: % de Ciudadanos que NO CONFÍAN en la Policía Nacional
+
+```{r mapa-confianza-geografica, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=8}
+library(dplyr)
+library(ggplot2)
+library(sf)     
+library(scales) 
+
+# 1. PREPARAR LOS DATOS - USANDO SOLAMENTE dplyr
+data_mapa <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Departamento)) %>%
+  dplyr::mutate(Departamento_limpio = toupper(Departamento)) %>%
+  dplyr::group_by(Departamento_limpio) %>% 
+  dplyr::summarise(
+    Total_Casos = dplyr::n(),
+    No_Confia = sum(Confianza_policia == "No Confía"),
+    Pct_NoConfia = No_Confia / Total_Casos,
+    .groups = 'drop'
+  )
+
+# 2. UNIR CON EL MAPA
+mapa_final <- dplyr::left_join(mapa_peru_sf, data_mapa, by = c("NOMBDEP" = "Departamento_limpio"))
+
+# 3. CREAR EL MAPA
+ggplot(data = mapa_final) +
+  geom_sf(aes(fill = Pct_NoConfia), color = "white", size = 0.3) +
+  scale_fill_gradient(
+    low = "#E8F5E9",
+    high = "#E74C3C",
+    labels = scales::percent,
+    name = "% NO Confía",
+    na.value = "lightgrey"
+  ) +
+  geom_sf_text(aes(label = ifelse(!is.na(Pct_NoConfia), 
+                                  paste0(round(Pct_NoConfia * 100), "%"), 
+                                  "")),
+               size = 3, color = "black", fontface = "bold") +
+  theme_void() + 
+  labs(
+    title = "No Confianza en la Policía por Departamento (Perú)",
+    subtitle = "Porcentaje de ciudadanos que no confían en la institución policial",
+    caption = "Fuente: Elaboración propia basada en datos LAPOP 2023"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
+    plot.subtitle = element_text(hjust = 0.5, size = 12),
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### **Tema de investigación**
+
+Determinantes de la confianza en la Policía Nacional del Perú: victimización, percepción de inseguridad y satisfacción con la democracia (2023)
+
+### **Pregunta de investigación**
+
+¿En qué medida la victimización, la percepción de inseguridad y la satisfacción con la democracia influyen en la confianza de la ciudadanía en la Policía Nacional del Perú (2023)?
+
+### **Justificación**
+
+La confianza en la Policía Nacional es un elemento clave del capital social institucional, pues influye en la disposición ciudadana a cooperar y cumplir la ley. Analizar factores como la victimización, la percepción de inseguridad y la satisfacción con la democracia permite entender las dinámicas que afectan su legitimidad. Usar datos de LAPOP (2023) brinda evidencia útil para orientar políticas públicas.
+
+### **Hipótesis**
+
+H1: Las personas victimizadas tienen menor probabilidad de confiar en la Policía Nacional del Perú.
+
+H2: Una mayor percepción de inseguridad está asociada con niveles más bajos de confianza policial.
+
+H3: La satisfacción con la democracia incrementa la probabilidad de confiar en la policía.
+
+
+Variable Dependiente {data-icon="fa-table"}
+=====================================
+
+Row {data-width=500}
+-----------------------------------------------------------------------
+
+### Gráfico de Variable Central
+
+```{r grafico-metodologico, echo=FALSE, fig.height=8, fig.width=9.5} 
+
+data_filtrada = data %>%
+  dplyr::filter(!is.na(Confianza_policia))
+
+grafico_confianza = ggplot(data_filtrada, aes(x = Confianza_policia, fill = Confianza_policia)) +
+  geom_bar(width = 0.6) +
+  
+  geom_text(stat = 'count', 
+            aes(label = paste0(round(after_stat(prop)*100, 1), "%"), group = 1), 
+            vjust = -1, 
+            color = "black", 
+            size = 2.9) + 
+  
+  labs(
+    title = "Distribución de la Confianza en la Policía Nacional",
+    subtitle = "Variable Central (Dependiente)",
+    x = "Nivel de Confianza",
+    y = "Frecuencia (Conteo de Casos)"
+  ) +
+  scale_fill_manual(values = c("No Confía" = "#8B1A1A", "Confía" = "#00008B")) + 
+  theme_minimal() +
+  theme(legend.position = "none") 
+
+print(grafico_confianza)
+```
+
+Column {data-width=610}
+-----------------------------------------------------------------------
+
+### Tabla de Variable Central
+
+```{r}
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+if (!"Confianza_policia" %in% names(data)) {
+  stop("❌ Error: Variable 'Confianza_policia' no encontrada")
+}
+
+# --- 2. CÁLCULO ---
+tabla_confianza <- data %>%
+  dplyr::filter(!is.na(Confianza_policia)) %>%
+  dplyr::count(Confianza_policia) %>%
+  dplyr::mutate(
+    Porcentaje = round(n / sum(n) * 100, 2)
+  ) %>%
+  dplyr::arrange(desc(Confianza_policia))
+
+# --- 3. TABLA CON KABLEEXTRA (MISMO FORMATO QUE METODOLÓGICA) ---
+tabla_confianza %>%
+  kable(
+    caption = "Distribución de Confianza Policial",
+    col.names = c("Confianza en la Policía", "Frecuencia", "Porcentaje"),
+    align = c('l', 'r', 'r')
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = TRUE,
+    position = "left"
+  ) %>%
+  # MISMOS COLORES QUE LA TABLA METODOLÓGICA
+  row_spec(1, background = "#87CEFA", extra_css = "font-weight: bold;") %>%  # Verde claro
+  row_spec(2, background = "#FF6A6A", extra_css = "font-weight: bold;") %>%  # Rojo claro
+  # MISMO TAMAÑO Y ESPACIADO
+  column_spec(1:3, extra_css = "font-size: 14px; padding: 8px;") %>%
+  # FOOTNOTE SIMILAR
+  footnote(
+    general = paste("Total de casos:", sum(tabla_confianza$n)),
+    general_title = "",
+    footnote_as_chunk = TRUE
+  )
+```
+
+### Gráfico (Deparamentos)
+
+```{r grafico, echo=FALSE, fig.height=8, fig.width=8} 
+library(dplyr)
+library(Rmisc) # Necesario para la función summarySE()
+library(ggplot2)
+
+# --- 1. Preparación de Datos: Recodificación y Cálculo de CI ---
+
+# 1.1 Recodificar Confianza_policia a numérica (1 = Confía, 0 = No Confía)
+# Esto es necesario para que summarySE pueda calcular el promedio (que será la proporción)
+data$Confianza_num <- ifelse(data$Confianza_policia == "Confía", 1, 0)
+
+# 1.2 Calcular la Proporción (Media) y el Intervalo de Confianza (CI) por Departamento
+df_confianza_depto <- data %>%
+  filter(!is.na(Departamento) & !is.na(Confianza_policia)) %>% # Limpiar NAs
+  summarySE(
+    measurevar = "Confianza_num", 
+    groupvar = "Departamento", 
+    na.rm = TRUE
+  )
+
+# 1.3 Convertir la media y el CI a porcentaje (escala 0-100) para el eje Y
+df_confianza_depto <- df_confianza_depto %>%
+  mutate(Confianza_perc = Confianza_num * 100,
+         ci_perc = ci * 100)
+
+# --- 2. Generación del Gráfico de Barras con IC ---
+
+# 2.1 Calcular el promedio nacional (para la línea de referencia)
+promedio_nacional <- mean(df_confianza_depto$Confianza_perc)
+
+# 2.2 Generar el gráfico g1
+g1_depto <- ggplot(df_confianza_depto, 
+                   aes(x = reorder(Departamento, Confianza_perc), # Reordenar por porcentaje
+                       y = Confianza_perc)) +
+  
+  geom_bar(stat = "identity", fill = "#1E90FF") + # Barras (color azul)
+  
+  # Intervalos de confianza
+  geom_errorbar(aes(ymin = Confianza_perc - ci_perc, 
+                    ymax = Confianza_perc + ci_perc), 
+                width = 0.2) + 
+  
+  coord_flip() + # Voltear ejes
+  
+  # Línea del promedio nacional
+  geom_hline(yintercept = promedio_nacional, 
+             linetype = "dashed", 
+             color = "red", 
+             size = 1) + 
+  
+  # Etiquetas de porcentaje
+  geom_text(aes(label = paste0(round(Confianza_perc, 1), "%")), 
+            vjust = 0.5, 
+            hjust = -0.1, 
+            color = "black", 
+            size = 3) + 
+  
+  # Ajustar límites del eje Y y títulos
+  ylim(0, max(df_confianza_depto$Confianza_perc + df_confianza_depto$ci_perc) + 5) + 
+  labs(
+    title = "Confianza Policial por Departamento",
+    subtitle = "Porcentaje de encuestados que confían, con Intervalos de Confianza",
+    x = "", 
+    y = "Porcentaje de Confianza (Escala 0 - 100)"
+  ) +
+  theme_minimal()
+
+print(g1_depto)
+```
+
+Variables Independientes {data-icon="fa-table"}
+=====================================     
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### Gráfico de Confianza según Nivel Educativo
+
+```{r}
+library(ggplot2)
+
+g_edu <- data %>%
+  # El filtro se puede aplicar directamente en la cadena de pipes para ggplot
+  filter(!is.na(Nivel_educativo) & !is.na(Confianza_policia)) %>%
+  ggplot(aes(x = Nivel_educativo, fill = Confianza_policia)) +
+  geom_bar(position = "fill") + # Esencial para mostrar proporciones
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Confianza Policial por Nivel Educativo",
+    x = "Nivel Educativo Alcanzado",
+    y = "Proporción de Confianza / No Confianza",
+    fill = "Confianza Policial"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No Confía" = "#B22222", "Confía" = "#1E90FF"))
+
+print(g_edu)
+```
+
+### Gráfico de Confianza según Edad
+
+```{r}
+g_edad <- data %>%
+  filter(!is.na(Edad) & !is.na(Confianza_policia)) %>%
+  ggplot(aes(x = Confianza_policia, y = Edad, fill = Confianza_policia)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(
+    title = "Distribución de la Edad por Confianza Policial",
+    x = "Confianza en la Policía",
+    y = "Edad del Encuestado"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No Confía" = "#8B0000", "Confía" = "#0000CD")) +
+  theme(legend.position = "none")
+
+print(g_edad)
+```
+
+### Gráfico de Confianza según Sexo 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+g_sex <- data %>%
+  # 1. Filtrar NAs en Confianza (Y) y Sexo (X)
+  filter(!is.na(Confianza_policia) & !is.na(Sexo)) %>%
+  
+  ggplot(aes(x = Sexo, fill = Confianza_policia)) +
+  geom_bar(position = "fill") + # Esencial para mostrar proporciones
+  scale_y_continuous(labels = scales::percent) +
+  
+  labs(
+    title = "Confianza Policial por Sexo",
+    subtitle = "Proporción de Confianza/No Confianza dentro de cada grupo",
+    x = "Sexo del Encuestado",
+    y = "Proporción (Porcentaje)",
+    fill = "Confianza Policial"
+  ) +
+  theme_minimal() +
+  # Puedes ajustar los colores si lo deseas
+  scale_fill_manual(values = c("No Confía" = "#B22222", "Confía" = "#1E90FF")) 
+
+print(g_sex)
+```
+
+### Gráfico de Confianza según Victimización
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+g_vic_solo <- data %>%
+  # Filtrar NAs en Confianza (Y) y Victimización (X)
+  filter(!is.na(Confianza_policia) & !is.na(Victimizacion)) %>%
+  
+  ggplot(aes(x = Victimizacion, fill = Confianza_policia)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  
+  labs(
+    title = "Confianza Policial por Victimización",
+    subtitle = "Proporción de Confianza/No Confianza",
+    x = "¿Fue víctima de delito?",
+    y = "Proporción (Porcentaje)",
+    fill = "Confianza Policial"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No Confía" = "#B22222", "Confía" = "#1E90FF"))
+
+print(g_vic_solo)
+```
+
+### Gráfico de Confianza según Inseguridad
+
+```{r}
+g_ins_solo <- data %>%
+  # Filtrar NAs en Confianza (Y) y Inseguridad (X)
+  filter(!is.na(Confianza_policia) & !is.na(Inseguridad)) %>%
+  
+  ggplot(aes(x = Inseguridad, fill = Confianza_policia)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  
+  labs(
+    title = "Confianza Policial por Percepción de Inseguridad",
+    subtitle = "Proporción de Confianza/No Confianza",
+    x = "Percepción de Seguridad en el Barrio",
+    y = "Proporción (Porcentaje)",
+    fill = "Confianza Policial"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No Confía" = "#B22222", "Confía" = "#1E90FF"))
+
+print(g_ins_solo)
+```
+
+### Gráfico de Confianza según Satisfacción Democrática
+
+```{r}
+g_dem_solo <- data %>%
+  # Filtrar NAs en Confianza (Y) y Satisfacción Democrática (X)
+  filter(!is.na(Confianza_policia) & !is.na(Satisfaccion_democracia)) %>%
+  
+  ggplot(aes(x = Satisfaccion_democracia, fill = Confianza_policia)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  
+  labs(
+    title = "Confianza Policial por Satisfacción Democrática",
+    subtitle = "Proporción de Confianza/No Confianza",
+    x = "Nivel de Satisfacción Democrática",
+    y = "Proporción (Porcentaje)",
+    fill = "Confianza Policial"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("No Confía" = "#B22222", "Confía" = "#1E90FF"))
+
+print(g_dem_solo)
+```
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### Tabla de Confianza según Nivel Educativo
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Nivel_educativo") %in% names(data))) {
+  stop("❌ Error: Variables no encontradas en el dataset")
+}
+
+# --- 2. CÁLCULO DE PROPORCIONES ---
+tabla_educacion <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Nivel_educativo)) %>%
+  dplyr::count(Nivel_educativo, Confianza_policia) %>%
+  dplyr::group_by(Nivel_educativo) %>%
+  dplyr::mutate(
+    Proporcion = n / sum(n),
+    # Etiquetas claras para confianza
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "Confía",
+      Confianza_policia == 0 ~ "No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  # ORDENAR NIVELES EDUCATIVOS
+  dplyr::mutate(
+    Nivel_educativo = factor(Nivel_educativo, 
+                           levels = c("Baja", "Media", "Alta"),
+                           labels = c("Baja", "Media", "Alta"))
+  ) %>%
+  dplyr::select(Nivel_educativo, Nivel_Confianza, n, Proporcion) %>%
+  dplyr::arrange(Nivel_educativo, Nivel_Confianza)
+
+# --- 3. TABLA GT PROFESIONAL ---
+gt_table <- tabla_educacion %>%
+  gt(groupname_col = "Nivel_educativo") %>%  # Agrupar por nivel educativo
+  
+  # ENCABEZADO ATRACTIVO
+  tab_header(
+    title = md("**Confianza Policial por Nivel Educativo**"),
+    subtitle = "Distribución de confianza institucional según nivel educativo"
+  ) %>%
+  
+  # ETIQUETAS CLARAS
+  cols_label(
+    Nivel_Confianza = md("**Confianza Policial**"),
+    n = md("**Frecuencia**"),
+    Proporcion = md("**Proporción**")
+  ) %>%
+  
+  # FORMATEO CONSISTENTE
+  fmt_number(
+    columns = n,
+    decimals = 0,
+    sep_mark = ","
+  ) %>%
+  
+  fmt_percent(
+    columns = Proporcion,
+    decimals = 1
+  ) %>%
+  
+  # COLOR PARA DESTACAR PROPORCIONES
+  data_color(
+    columns = Proporcion,
+    colors = scales::col_numeric(
+      palette = c("#E8F4FD", "#3498DB", "#2C3E50"),
+      domain = c(0, 1)
+    )
+  ) %>%
+  
+  # ESTILO PROFESIONAL
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "90%",
+    table.background.color = "white",
+    
+    # Encabezados
+    heading.title.font.size = "20px",
+    heading.subtitle.font.size = "13px",
+    heading.align = "center",
+    heading.background.color = "#2C3E50",
+    heading.title.font.weight = "bold",
+    
+    # Grupos de filas
+    row_group.background.color = "#00BFFF",
+    row_group.font.weight = "bold",
+    row_group.font.size = "14px",
+    row_group.padding = px(8),
+    
+    # Columnas
+    column_labels.background.color = "#3498DB",
+    column_labels.font.weight = "bold",
+    column_labels.font.size = "14px",
+    column_labels.padding = px(10),
+    
+    # Celdas
+    data_row.padding = px(6),
+    table_body.hlines.color = "lightgrey"
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title"),
+      cells_row_groups()
+    )
+  ) %>%
+  
+  tab_style(
+    style = cell_text(color = "#F0F0F0"),
+    locations = cells_title("subtitle")
+  ) %>%
+  
+  # PIE DE PÁGINA INFORMATIVO
+  tab_source_note(
+    md("**Fuente:** Datos de LAPOP (2023) | Análisis por nivel educativo")
+  ) %>%
+  
+  # TOTALES POR GRUPO
+  summary_rows(
+    groups = TRUE,
+    columns = n,
+    fns = list(Total = ~sum(.)),
+    formatter = fmt_number,
+    decimals = 0
+  )
+
+# --- 4. RESULTADO FINAL ---
+gt_table
+```
+
+### Tabla Confianza según Edad
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Edad") %in% names(data))) {
+  stop("❌ Error: Variables no encontradas en el dataset")
+}
+
+# --- 2. CÁLCULO ROBUSTO ---
+tabla_edad_confianza <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Edad)) %>% 
+  dplyr::group_by(Confianza_policia) %>%
+  dplyr::summarise(
+    N = n(),
+    Media = mean(Edad, na.rm = TRUE),
+    Mediana = median(Edad, na.rm = TRUE),
+    Desviacion_Estandar = sd(Edad, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  dplyr::mutate(
+    # Crear etiquetas comprensibles
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "✅ Confía",
+      Confianza_policia == 0 ~ "❌ No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::select(Nivel_Confianza, N, Media, Mediana, Desviacion_Estandar)
+
+# --- 3. DISEÑO ELEGANTE CON GT ---
+gt_table <- tabla_edad_confianza %>%
+  gt() %>%
+  
+  # ENCABEZADO ATractivo
+  tab_header(
+    title = md("**Análisis: Confianza Policial según Edad**"),
+    subtitle = "Estadísticas descriptivas por nivel de confianza"
+  ) %>%
+  
+  # ETIQUETAS CLARAS
+  cols_label(
+    Nivel_Confianza = md("**Nivel de Confianza**"),
+    N = md("**Muestra (N)**"),
+    Media = md("**Edad (Media)**"),
+    Mediana = md("**Edad (Mediana)**"),
+    Desviacion_Estandar = md("**Desviación Estándar**")
+  ) %>%
+  
+  # FORMATEO CONSISTENTE
+  fmt_number(
+    columns = c(Media, Mediana, Desviacion_Estandar),
+    decimals = 1,
+    sep_mark = ""
+  ) %>%
+  
+  fmt_number(
+    columns = N,
+    decimals = 0,
+    sep_mark = ""
+  ) %>%
+  
+  # COLOR PARA DESTACAR
+  data_color(
+    columns = c(Media, Mediana),
+    colors = scales::col_numeric(
+      palette = c("#E8F4FD", "#2E86AB"),
+      domain = NULL
+    )
+  ) %>%
+  
+  # ESTILO MODERNO
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "95%",
+    table.background.color = "white",
+    
+    # Encabezados
+    heading.title.font.size = "20px",
+    heading.subtitle.font.size = "14px",
+    heading.align = "center",
+    heading.background.color = "#2E86AB",
+    heading.title.font.weight = "bold",
+    
+    # Columnas
+    column_labels.background.color = "#4CB5AE",
+    column_labels.font.weight = "bold",
+    column_labels.font.size = "14px",
+    column_labels.padding = px(10),
+    
+    # Celdas
+    data_row.padding = px(8),
+    table_body.hlines.color = "lightgrey",
+    table_body.vlines.color = "lightgrey",
+    
+    # Bordes
+    table.border.top.color = "#2E86AB",
+    table.border.bottom.color = "#2E86AB"
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title")
+    )
+  ) %>%
+  
+  tab_style(
+    style = cell_text(color = "#F0F0F0"),
+    locations = cells_title("subtitle")
+  ) %>%
+  
+  # PIE DE PÁGINA INFORMATIVO
+  tab_source_note(
+    md("**Fuente:** Datos de la LAPOP (2023) | **Elaboración propia**")
+  )
+
+gt_table
+```
+
+
+### Tabla Confianza según Sexo
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Sexo") %in% names(data))) {
+  stop("❌ Error: Variables 'Confianza_policia' o 'Sexo' no encontradas")
+}
+
+# --- 2. CÁLCULO DE PROPORCIONES ---
+tabla_sexo <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Sexo)) %>%
+  dplyr::count(Sexo, Confianza_policia) %>%
+  dplyr::group_by(Sexo) %>%
+  dplyr::mutate(
+    Proporcion = n / sum(n),
+    # Crear etiquetas comprensibles
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "✅ Confía",
+      Confianza_policia == 0 ~ "❌ No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(Sexo, Nivel_Confianza, n, Proporcion)
+
+# --- 3. DISEÑO ELEGANTE CON GT ---
+gt_table <- tabla_sexo %>%
+  gt() %>%
+  
+  # ENCABEZADO ATRACTIVO
+  tab_header(
+    title = md("**Confianza Policial por Sexo**"),
+    subtitle = "Distribución de niveles de confianza según género"
+  ) %>%
+  
+  # ETIQUETAS CLARAS
+  cols_label(
+    Sexo = md("**Sexo**"),
+    Nivel_Confianza = md("**Nivel de Confianza**"),
+    n = md("**Frecuencia**"),
+    Proporcion = md("**Proporción**")
+  ) %>%
+  
+  # FORMATEO CONSISTENTE
+  fmt_number(
+    columns = n,
+    decimals = 0,
+    sep_mark = ""
+  ) %>%
+  
+  fmt_percent(
+    columns = Proporcion,
+    decimals = 1
+  ) %>%
+  
+  # COLOR PARA DESTACAR PROPORCIONES
+  data_color(
+    columns = Proporcion,
+    colors = scales::col_numeric(
+      palette = c("#FFE6E6", "#FF6B6B"),
+      domain = c(0, 1)
+    )
+  ) %>%
+  
+  # AGRUPAR POR SEXO PARA MEJOR VISUALIZACIÓN
+  tab_row_group(
+    label = md("**Hombres**"),
+    rows = Sexo == "Hombre"
+  ) %>%
+  
+  tab_row_group(
+    label = md("**Mujeres**"),
+    rows = Sexo == "Mujer"
+  ) %>%
+  
+  # OCULTAR COLUMNA SEXO ORIGINAL (ya tenemos los grupos)
+  cols_hide(columns = Sexo) %>%
+  
+  # ESTILO MODERNO
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "90%",
+    table.background.color = "white",
+    
+    # Encabezados
+    heading.title.font.size = "20px",
+    heading.subtitle.font.size = "14px",
+    heading.align = "center",
+    heading.background.color = "#6A0572",
+    heading.title.font.weight = "bold",
+    
+    # Grupos de filas
+    row_group.background.color = "#7A378B",
+    row_group.font.weight = "bold",
+    row_group.font.size = "14px",
+    
+    # Columnas
+    column_labels.background.color = "#9D4EA9",
+    column_labels.font.weight = "bold",
+    column_labels.font.size = "14px",
+    column_labels.padding = px(10),
+    
+    # Celdas
+    data_row.padding = px(8),
+    table_body.hlines.color = "lightgrey"
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title"),
+      cells_row_groups()
+    )
+  ) %>%
+  
+  tab_style(
+    style = cell_text(color = "#F0F0F0"),
+    locations = cells_title("subtitle")
+  ) %>%
+  
+  # PIE DE PÁGINA INFORMATIVO
+  tab_source_note(
+    md("**Fuente:** Datos de LAPOP (2023) | Proporciones calculadas por grupo de sexo")
+  ) %>%
+  
+  # TOTALES POR GRUPO (OPCIONAL)
+  summary_rows(
+    groups = everything(),
+    columns = n,
+    fns = list(Total = ~sum(.)),
+    formatter = fmt_number,
+    decimals = 0
+  )
+
+# --- 4. RESULTADO FINAL ---
+gt_table
+```
+
+### Tabla Confianza según Victimización
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Victimizacion") %in% names(data))) {
+  stop("❌ Error: Variables 'Confianza_policia' o 'Victimizacion' no encontradas")
+}
+
+# --- 2. CÁLCULO MEJORADO ---
+tabla_victimizacion <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Victimizacion)) %>%
+  dplyr::count(Victimizacion, Confianza_policia) %>%
+  dplyr::group_by(Victimizacion) %>%
+  dplyr::mutate(
+    Proporcion = n / sum(n),
+    # Etiquetas más claras
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "Confía",
+      Confianza_policia == 0 ~ "No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  # CREAR UNA COLUMNA EXPLÍCITA PARA LOS GRUPOS
+  dplyr::mutate(
+    Grupo_Victimizacion = dplyr::case_when(
+      Victimizacion == 1 ~ "🚨 Personas Victimizadas",
+      Victimizacion == 0 ~ "🛡️ Personas No Victimizadas",
+      TRUE ~ paste("Victimización:", Victimizacion)
+    )
+  ) %>%
+  dplyr::select(Grupo_Victimizacion, Nivel_Confianza, n, Proporcion) %>%
+  # ORDENAR EXPLÍCITAMENTE
+  dplyr::arrange(Grupo_Victimizacion, Nivel_Confianza)
+
+# --- 3. DISEÑO MEJORADO CON AGRUPACIÓN VISIBLE ---
+gt_table <- tabla_victimizacion %>%
+  gt(groupname_col = "Grupo_Victimizacion") %>%  # ← CLAVE: Especificar columna de grupos
+  
+  # ENCABEZADO ATRACTIVO
+  tab_header(
+    title = md("**Confianza Policial según Victimización**"),
+    subtitle = "Relación entre experiencia de victimización y confianza en la policía"
+  ) %>%
+  
+  # ETIQUETAS CLARAS
+  cols_label(
+    Nivel_Confianza = md("**Nivel de Confianza**"),
+    n = md("**Frecuencia**"),
+    Proporcion = md("**Proporción**")
+  ) %>%
+  
+  # FORMATEO CONSISTENTE
+  fmt_number(
+    columns = n,
+    decimals = 0
+  ) %>%
+  
+  fmt_percent(
+    columns = Proporcion,
+    decimals = 1
+  ) %>%
+  
+  # COLOR PARA DESTACAR PROPORCIONES
+  data_color(
+    columns = Proporcion,
+    colors = scales::col_numeric(
+      palette = c("#FFF5F5", "#FEB24C", "#E31A1C"),
+      domain = c(0, 1)
+    )
+  ) %>%
+  
+  # ESTILO MEJORADO
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "92%",
+    
+    # Encabezados
+    heading.title.font.size = "20px",
+    heading.subtitle.font.size = "13px",
+    heading.align = "center",
+    heading.background.color = "#CB1B16",
+    heading.title.font.weight = "bold",
+    
+    # Grupos de filas (AHORA SÍ VISIBLES)
+    row_group.background.color = "#B22222",
+    row_group.font.weight = "bold",
+    row_group.font.size = "14px",
+    row_group.padding = px(10),
+    
+    # Columnas
+    column_labels.background.color = "#E74C3C",
+    column_labels.font.weight = "bold",
+    column_labels.padding = px(10)
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title"),
+      cells_row_groups()
+    )
+  ) %>%
+  
+  # PIE DE PÁGINA
+  tab_source_note(
+    md("**Fuente:** Datos de LAPOP (2023) | Análisis de relación victimización-confianza")
+  ) %>%
+  
+  # TOTALES POR GRUPO (AHORA SÍ FUNCIONA)
+  summary_rows(
+    groups = TRUE,
+    columns = n,
+    fns = list(Total = ~sum(.)),
+    formatter = fmt_number,
+    decimals = 0
+  )
+
+# --- 4. RESULTADO FINAL ---
+gt_table
+```
+
+### Tabla Confianza según Inseguridad
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Inseguridad") %in% names(data))) {
+  stop("❌ Error: Variables 'Confianza_policia' o 'Inseguridad' no encontradas")
+}
+
+# --- 2. CÁLCULO DE PROPORCIONES ---
+tabla_inseguridad <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Inseguridad)) %>%
+  dplyr::count(Inseguridad, Confianza_policia) %>%
+  dplyr::group_by(Inseguridad) %>%
+  dplyr::mutate(
+    Proporcion = n / sum(n),
+    # Etiquetas claras para confianza
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "Confía",
+      Confianza_policia == 0 ~ "No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  # CREAR COLUMNA EXPLÍCITA PARA AGRUPAMIENTO
+  dplyr::mutate(
+    Grupo_Inseguridad = dplyr::case_when(
+      Inseguridad == 1 ~ "🚨 Se siente inseguro",
+      Inseguridad == 0 ~ "🛡️ Se siente seguro", 
+      TRUE ~ paste("Percepción:", Inseguridad)
+    )
+  ) %>%
+  dplyr::select(Grupo_Inseguridad, Nivel_Confianza, n, Proporcion) %>%
+  # ORDENAR PARA MEJOR PRESENTACIÓN
+  dplyr::arrange(Grupo_Inseguridad, Nivel_Confianza)
+
+# --- 3. DISEÑO PROFESIONAL CON GT ---
+gt_table <- tabla_inseguridad %>%
+  gt(groupname_col = "Grupo_Inseguridad") %>%  # ← AGRUPAMIENTO CLARO
+  
+  # ENCABEZADO IMPACTANTE
+  tab_header(
+    title = md("**Confianza Policial según Percepción de Inseguridad**"),
+    subtitle = "Relación entre sentir inseguridad y confiar en la policía"
+  ) %>%
+  
+  # ETIQUETAS DESCRIPTIVAS
+  cols_label(
+    Nivel_Confianza = md("**Nivel de Confianza**"),
+    n = md("**Frecuencia**"),
+    Proporcion = md("**Proporción**")
+  ) %>%
+  
+  # FORMATEO PRECISO
+  fmt_number(
+    columns = n,
+    decimals = 0,
+    sep_mark = ","
+  ) %>%
+  
+  fmt_percent(
+    columns = Proporcion,
+    decimals = 1
+  ) %>%
+  
+  # COLORES TEMÁTICOS (amarillo/naranja para alerta)
+  data_color(
+    columns = Proporcion,
+    colors = scales::col_numeric(
+      palette = c("#FFF9E6", "#FFC107", "#FF6F00"),
+      domain = c(0, 1)
+    )
+  ) %>%
+  
+  # ESTILO PROFESIONAL
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "90%",
+    table.background.color = "white",
+    
+    # Encabezados
+    heading.title.font.size = "18px",
+    heading.subtitle.font.size = "13px",
+    heading.align = "center",
+    heading.background.color = "#FF8C00",
+    heading.title.font.weight = "bold",
+    
+    # Grupos de filas (VISIBLES)
+    row_group.background.color = "#8B6508",
+    row_group.font.weight = "bold",
+    row_group.font.size = "14px",
+    row_group.padding = px(8),
+    
+    # Columnas
+    column_labels.background.color = "#FFA726",
+    column_labels.font.weight = "bold",
+    column_labels.font.size = "14px",
+    column_labels.padding = px(10),
+    
+    # Celdas
+    data_row.padding = px(6),
+    table_body.hlines.color = "lightgrey"
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title"),
+      cells_row_groups()
+    )
+  ) %>%
+  
+  tab_style(
+    style = cell_text(color = "#F8F8F8"),
+    locations = cells_title("subtitle")
+  ) %>%
+  
+  # PIE DE PÁGINA INFORMATIVO
+  tab_source_note(
+    md("**Fuente:** Datos de LAPOP (2023) | Percepción de inseguridad vs. confianza institucional")
+  ) %>%
+  
+  # TOTALES POR GRUPO (FUNCIONA PORQUE HAY AGRUPAMIENTO)
+  summary_rows(
+    groups = TRUE,
+    columns = n,
+    fns = list(Total = ~sum(.)),
+    formatter = fmt_number,
+    decimals = 0
+  )
+
+# --- 4. RESULTADO FINAL ---
+gt_table
+```
+
+### Tabla Confianza según Satisfacción Democrática
+
+```{r}
+library(dplyr)
+library(gt)
+library(scales)
+
+# --- 1. VERIFICACIÓN SEGURA ---
+if (!exists("data")) stop("❌ Error: El objeto 'data' no existe")
+
+if (!all(c("Confianza_policia", "Satisfaccion_democracia") %in% names(data))) {
+  stop("❌ Error: Variables 'Confianza_policia' o 'Satisfaccion_democracia' no encontradas")
+}
+
+# --- 2. CÁLCULO DE PROPORCIONES ---
+tabla_satisfaccion <- data %>%
+  dplyr::filter(!is.na(Confianza_policia) & !is.na(Satisfaccion_democracia)) %>%
+  dplyr::count(Satisfaccion_democracia, Confianza_policia) %>%
+  dplyr::group_by(Satisfaccion_democracia) %>%
+  dplyr::mutate(
+    Proporcion = n / sum(n),
+    # Etiquetas claras para confianza
+    Nivel_Confianza = dplyr::case_when(
+      Confianza_policia == 1 ~ "Confía",
+      Confianza_policia == 0 ~ "No Confía",
+      TRUE ~ paste("Valor", Confianza_policia)
+    )
+  ) %>%
+  dplyr::ungroup() %>%
+  # CREAR COLUMNA EXPLÍCITA PARA AGRUPAMIENTO
+  dplyr::mutate(
+    Grupo_Satisfaccion = dplyr::case_when(
+      Satisfaccion_democracia == 1 ~ "✅ Satisfecho con la democracia",
+      Satisfaccion_democracia == 0 ~ "❌ Insatisfecho con la democracia", 
+      TRUE ~ paste("Percepción:", Satisfaccion_democracia)
+    )
+  ) %>%
+  dplyr::select(Grupo_Satisfaccion, Nivel_Confianza, n, Proporcion) %>%
+  # ORDENAR PARA MEJOR PRESENTACIÓN
+  dplyr::arrange(Grupo_Satisfaccion, Nivel_Confianza)
+
+# --- 3. DISEÑO PROFESIONAL CON GT ---
+gt_table <- tabla_satisfaccion %>%
+  gt(groupname_col = "Grupo_Satisfaccion") %>%  # ← AGRUPAMIENTO CLARO
+  
+  # ENCABEZADO IMPACTANTE
+  tab_header(
+    title = md("Confianza Policial según Satisfacción Democrática"),
+    subtitle = "Relación entre satisfacción con la democracia y confianza en la policía"
+  ) %>%
+  
+  # ETIQUETAS DESCRIPTIVAS
+  cols_label(
+    Nivel_Confianza = md("**Nivel de Confianza**"),
+    n = md("**Frecuencia**"),
+    Proporcion = md("**Proporción**")
+  ) %>%
+  
+  # FORMATEO PRECISO
+  fmt_number(
+    columns = n,
+    decimals = 0,
+    sep_mark = ","
+  ) %>%
+  
+  fmt_percent(
+    columns = Proporcion,
+    decimals = 1
+  ) %>%
+  
+  # COLORES TEMÁTICOS (verdes/azules para democracia)
+  data_color(
+    columns = Proporcion,
+    colors = scales::col_numeric(
+      palette = c("#E8F5E9", "#4CAF50", "#2E7D32"),
+      domain = c(0, 1)
+    )
+  ) %>%
+  
+  # ESTILO PROFESIONAL
+  tab_options(
+    # Tabla general
+    table.font.size = "14px",
+    table.width = "92%",
+    table.background.color = "white",
+    
+    # Encabezados
+    heading.title.font.size = "18px",
+    heading.subtitle.font.size = "13px",
+    heading.align = "center",
+    heading.background.color = "#2E7D32",
+    heading.title.font.weight = "bold",
+    
+    # Grupos de filas (VISIBLES)
+    row_group.background.color = "#548B54",
+    row_group.font.weight = "bold",
+    row_group.font.size = "14px",
+    row_group.padding = px(8),
+    
+    # Columnas
+    column_labels.background.color = "#4CAF50",
+    column_labels.font.weight = "bold",
+    column_labels.font.size = "14px",
+    column_labels.padding = px(10),
+    
+    # Celdas
+    data_row.padding = px(6),
+    table_body.hlines.color = "lightgrey",
+    table_body.vlines.color = "lightgrey"
+  ) %>%
+  
+  # COLOR DE TEXTO EN ENCABEZADOS
+  tab_style(
+    style = cell_text(color = "white", weight = "bold"),
+    locations = list(
+      cells_column_labels(),
+      cells_title("title"),
+      cells_row_groups()
+    )
+  ) %>%
+  
+  tab_style(
+    style = cell_text(color = "#F0F0F0"),
+    locations = cells_title("subtitle")
+  ) %>%
+  
+  # PIE DE PÁGINA INFORMATIVO
+  tab_source_note(
+    md("**Fuente:** Datos de LAPOP (2023) | Satisfacción democrática vs. confianza institucional")
+  ) %>%
+  
+  # TOTALES POR GRUPO
+  summary_rows(
+    groups = TRUE,
+    columns = n,
+    fns = list(Total = ~sum(.)),
+    formatter = fmt_number,
+    decimals = 0
+  )
+
+# --- 4. RESULTADO FINAL ---
+gt_table
+```
+
+
+Correlación {data-icon="fa-table"}
+=====================================     
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### **Explicación Correlación**
+
+La matriz de correlación de Rho de Spearman examina las relaciones bivariadas entre todas las variables del estudio, sirviendo como diagnóstico de multicolinealidad antes de la regresión logística.Correlaciones con la Confianza Policial: La columna (Confianza_num) revela que todas las correlaciones son débiles (Rho $< 0.20$), lo que sugiere que las asociaciones directas son modestas. La relación más fuerte y significativa es la positiva con la Satisfacción Democrática ($\rho = 0.167$), indicando que una mayor satisfacción institucional se asocia a una mayor confianza policial. 
+
+En contraste, la Victimización y la Inseguridad muestran correlaciones muy débiles, que si bien son positivas o negativas, son prácticamente insignificantes en el análisis bivariado (alrededor de $\rho = \pm 0.05$).Correlaciones entre Variables Independientes (VIs): Es crucial observar que ninguna VI presenta una correlación moderada o fuerte (ej. Rho $> 0.5$) entre sí. La correlación más alta es $\mathbf{-0.17}$ (entre Victimizacion_num e Inseguridad_num), lo que asegura que no existe un riesgo grave de multicolinealidad en los modelos de regresión.Conclusión: La debilidad general de las correlaciones simple justifica la necesidad de realizar la Regresión Logística Binaria, ya que los efectos significativos probablemente solo se revelarán cuando se aíslen y controlen simultáneamente por el resto de factores.
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### **Correlación entre VD y VI numéricas**
+
+```{r}
+### 0. PRE-PROCESAMIENTO: CREACIÓN DE VARIABLES (1 = SÍ CONFÍA)
+
+library(dplyr)
+# Asegúrate de tener la tabla original 'data' cargada.
+
+# 1 = "Confía" (Evento que queremos modelar)
+# 0 = "No Confía" (Referencia)
+data_modelo <- data %>%
+  mutate(
+    Confianza_binaria = if_else(Confianza_policia == "Confía", 1, 0))
+```
+
+
+```{r correlacion-variables, echo=FALSE, warning=FALSE, message=FALSE, fig.width=8, fig.height=6}
+library(dplyr)
+library(corrplot)
+library(ggplot2)
+library(kableExtra)
+
+# --- 1. PREPARACIÓN SEGURA DE DATOS ---
+# Verificar que data_modelo existe
+if (!exists("data_modelo")) {
+  stop("❌ data_modelo no existe. Ejecuta primero el modelo logístico.")
+}
+
+data_cor <- data_modelo %>%
+  dplyr::select(Confianza_policia, Sexo, Edad, Nivel_educativo, Victimizacion, Inseguridad, Satisfaccion_democracia) %>%
+  dplyr::mutate(
+    # Convertir a numérico manteniendo estructura
+    Confianza_num = as.numeric(Confianza_policia) - 1,  # 0=No Confía, 1=Confía
+    Sexo_num = as.numeric(Sexo),
+    Educacion_num = as.numeric(Nivel_educativo),
+    Victimizacion_num = as.numeric(Victimizacion),
+    Inseguridad_num = as.numeric(Inseguridad),
+    Satisfaccion_num = as.numeric(Satisfaccion_democracia),
+    Edad_num = as.numeric(Edad)
+  ) %>%
+  dplyr::select(ends_with("_num")) %>%  # Seleccionar solo variables numéricas
+  na.omit()
+
+# --- 2. CÁLCULO DE CORRELACIONES ---
+cor_matrix <- cor(data_cor, method = "spearman", use = "complete.obs")
+
+# --- 3. CORRELOGRAMA MEJORADO ---
+corrplot(cor_matrix, 
+         method = "color",        # Más profesional que "circle"
+         type = "upper",         
+         order = "original",      # Más intuitivo que hclust
+         tl.col = "black",       
+         tl.srt = 45,            
+         addCoef.col = "black",   # Añadir coeficientes
+         number.cex = 0.7,        # Tamaño de los números
+         col = colorRampPalette(c("#E74C3C", "white", "#2E86AB"))(100),
+         title = "Matriz de Correlación (Rho de Spearman)\nVariables del Estudio",
+         mar = c(0, 0, 2, 0))     # Más espacio para el título
+```
+
+### **Tabla de correlaciones**
+
+```{r tabla-correlaciones, echo=FALSE, warning=FALSE}
+# --- 4. TABLA DE CORRELACIONES CON LA VARIABLE DEPENDIENTE ---
+correlaciones_vd <- data.frame(
+  Variable = c("Sexo", "Edad", "Nivel Educativo", "Victimización", 
+               "Inseguridad", "Satisfacción Democrática"),
+  Correlacion = round(cor_matrix[1, 2:7], 3),
+  Interpretacion = case_when(
+    abs(cor_matrix[1, 2:7]) < 0.1 ~ "Muy débil",
+    abs(cor_matrix[1, 2:7]) < 0.3 ~ "Débil", 
+    abs(cor_matrix[1, 2:7]) < 0.5 ~ "Moderada",
+    TRUE ~ "Fuerte"
+  ),
+  Direccion = ifelse(cor_matrix[1, 2:7] > 0, "Positiva", "Negativa")
+)
+
+# Tabla formateada
+correlaciones_vd %>%
+  kable(
+    caption = "Correlaciones con la Variable Dependiente (Confianza Policial)",
+    col.names = c("Variable Independiente", "Correlación (ρ)", "Fuerza", "Dirección"),
+    align = c('l', 'c', 'c', 'c')
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, background = "#2C3E50", color = "white", bold = TRUE) %>%
+  row_spec(which(abs(correlaciones_vd$Correlacion) > 0.2), 
+           background = "#E8F5E9", bold = TRUE)
+```
+
+
+Regresión {data-icon="fa-table"}
+=====================================     
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+```{r}
+# --- CÓDIGO ESENCIAL PARA DASHBOARD ---
+
+# 1. Verificar que existe la base de datos (silencioso)
+if(!exists("data_modelo")) {
+  stop("Error: No existe data_modelo. Ejecuta primero la preparación de datos.")
+}
+
+# 2. Ajustar los 4 modelos (sin mensajes)
+m1 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo, 
+          data = data_modelo, family = binomial)
+
+m2 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad, 
+          data = data_modelo, family = binomial)
+
+m3 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad + 
+            Satisfaccion_democracia, data = data_modelo, family = binomial)
+
+m4 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad + 
+            Satisfaccion_democracia + Victimizacion, 
+          data = data_modelo, family = binomial)
+
+# 3. Crear lista de modelos
+modelos <- list(
+  "1. Demográfico" = m1,
+  "2. + Inseguridad" = m2,
+  "3. + Satisfacción" = m3,
+  "4. + Victimización" = m4
+)
+```
+
+### **Explicación**
+
+Conclusión de la Regresión: 
+
+La prueba de Razón de Verosimilitud (LRT) se utiliza para justificar el uso de los modelos más complejos.Impacto Significativo: La inclusión de la Percepción de Seguridad (M2 vs M1) y la Satisfacción Democrática (M3 vs M2) demostró ser estadísticamente significativa ($p < 0.05$), confirmando que estas variables añaden valor predictivo al modelo.Impacto No Significativo: La adición de la Victimización (M4 vs M3) no resulta significativa ($p = 0.4434$). Si bien el Modelo 4 se selecciona por ser el más completo teóricamente, esta prueba indica que la Victimización no añade información estadística relevante sobre la confianza, una vez que se controlan los factores de percepción y demográficos.
+
+Conclusión de Odds Ratios (Modelo 4)
+
+El análisis multivariado aísla los efectos netos, demostrando que:Satisfacción Democrática es el Motor: La variable más poderosa es la Satisfacción Democrática. Los ciudadanos Satisfechos con la democracia tienen 2.22 veces más odds de confiar en la policía que aquellos insatisfechos ($p < 0.001$).Educación (Nivel Bajo): Tener un Nivel Educativo Bajo aumenta las odds de confianza en 1.87 veces en comparación con el Nivel Educativo Alto ($p < 0.01$).No Significación de Experiencia Directa: Ni la Victimización ni la Percepción de Seguridad resultaron ser significativas en el modelo final (M4). Esto es un hallazgo clave: su efecto bivariado desaparece al ser opacado por la influencia de variables de actitud más amplias (Satisfacción Democrática).
+
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### **Tabla de Coeficientes**
+
+```{r}
+# TABLA DE COEFICIENTES SIN EXPONENCIAR - VERSIÓN CORREGIDA
+
+# 1. Función para crear tabla limpia
+crear_tabla_coeficientes <- function(modelos) {
+  
+  # Crear dataframe vacío
+  resultados <- data.frame(Variable = character(),
+                           stringsAsFactors = FALSE)
+  
+  # Obtener todas las variables únicas de todos los modelos
+  todas_variables <- c()
+  for(modelo in modelos) {
+    coefs <- names(coef(modelo))
+    todas_variables <- unique(c(todas_variables, coefs))
+  }
+  
+  # Ordenar variables (intercept primero)
+  todas_variables <- c("(Intercept)", 
+                       setdiff(todas_variables, "(Intercept)"))
+  
+  # Crear filas para cada variable
+  for(var in todas_variables) {
+    fila <- data.frame(Variable = var)
+    
+    # Para cada modelo
+    for(i in 1:length(modelos)) {
+      modelo <- modelos[[i]]
+      coef_summary <- summary(modelo)$coefficients
+      
+      if(var %in% rownames(coef_summary)) {
+        coef_val <- coef_summary[var, "Estimate"]
+        se_val <- coef_summary[var, "Std. Error"]
+        p_val <- coef_summary[var, "Pr(>|z|)"]
+        
+        # Formato: coeficiente (error estándar)
+        celda <- sprintf("%.3f\n(%.3f)", coef_val, se_val)
+        
+        # Agregar significancia
+        signif <- ""
+        if(p_val < 0.001) signif <- "***"
+        else if(p_val < 0.01) signif <- "**"
+        else if(p_val < 0.05) signif <- "*"
+        else if(p_val < 0.1) signif <- "."
+        
+        fila[[paste0("Modelo_", i)]] <- paste(celda, signif)
+      } else {
+        fila[[paste0("Modelo_", i)]] <- "-"
+      }
+    }
+    
+    resultados <- rbind(resultados, fila)
+  }
+  
+  # Renombrar columnas
+  nombres_columnas <- c("Variable", names(modelos))
+  colnames(resultados) <- nombres_columnas
+  
+  return(resultados)
+}
+
+# 2. Crear la tabla
+tabla_coef <- crear_tabla_coeficientes(modelos)
+
+# 3. Mostrar con kable (para knitr)
+library(knitr)
+library(kableExtra)
+
+kable(tabla_coef, 
+      caption = "Coeficientes de Regresión Logística (sin exponenciar)",
+      align = c("l", "c", "c", "c", "c"),
+      col.names = c("Variable", "Demográfico", "+ Inseguridad", 
+                    "+ Satisfacción", "+ Victimización")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                font_size = 10,
+                full_width = FALSE) %>%
+  footnote(
+    general = "Nota: Coeficientes mostrados con errores estándar entre paréntesis. *** p<0.001, ** p<0.01, * p<0.05, . p<0.1",
+    general_title = ""
+  )
+```
+
+### **Tabla de Coeficientes Exponenciados**
+
+```{r}
+# FUNCIÓN para crear tabla manual
+crear_tabla_bonita <- function(modelos) {
+  
+  resultados <- data.frame()
+  
+  for(i in 1:length(modelos)) {
+    modelo <- modelos[[i]]
+    nombre <- names(modelos)[i]
+    
+    # Extraer coeficientes
+    coefs <- summary(modelo)$coefficients
+    odds <- exp(coefs[, 1])
+    
+    # Crear fila para cada variable
+    for(j in 1:nrow(coefs)) {
+      var_name <- rownames(coefs)[j]
+      
+      resultados <- rbind(resultados, data.frame(
+        Modelo = nombre,
+        Variable = var_name,
+        Odds_Ratio = sprintf("%.2f", odds[j]),
+        p_valor = ifelse(coefs[j, 4] < 0.001, "<0.001", 
+                        sprintf("%.3f", coefs[j, 4])),
+        Signif = ifelse(coefs[j, 4] < 0.001, "***",
+                       ifelse(coefs[j, 4] < 0.01, "**",
+                              ifelse(coefs[j, 4] < 0.05, "*",
+                                     ifelse(coefs[j, 4] < 0.1, ".", "")))),
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  
+  # Crear tabla con kableExtra
+  tabla <- resultados %>%
+    kbl(
+      caption = "Resultados de Regresión Logística - Odds Ratios",
+      booktabs = TRUE,
+      align = c("l", "l", "c", "c", "c")
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      font_size = 11,
+      full_width = FALSE,
+      position = "center"
+    ) %>%
+    column_spec(1, bold = TRUE) %>%
+    collapse_rows(columns = 1, valign = "top") %>%
+    footnote(
+      general = "Nota: Odds Ratio > 1 aumenta probabilidad de confiar. Significancia: ***p<0.001, **p<0.01, *p<0.05, .p<0.1",
+      general_title = ""
+    )
+  
+  return(tabla)
+}
+
+# Mostrar tabla
+crear_tabla_bonita(modelos)
+```
+
+### **Comparación de modelos**
+
+```{r}
+# TABLA DE COMPARACIÓN SIMPLE
+comparacion <- data.frame(
+  Modelo = names(modelos),
+  N = sapply(modelos, function(x) length(x$fitted.values)),
+  AIC = round(sapply(modelos, AIC), 1),
+  BIC = round(sapply(modelos, BIC), 1),
+  Pseudo_R2 = round(1 - (sapply(modelos, function(x) x$deviance) / 
+                         sapply(modelos, function(x) x$null.deviance)), 3)
+)
+
+# Identificar mejor modelo
+mejor_aic <- which.min(comparacion$AIC)
+
+# Crear tabla
+comparacion %>%
+  kbl(
+    caption = "Comparación de Modelos - Estadísticas de Ajuste",
+    booktabs = TRUE,
+    align = c("l", "c", "c", "c", "c")
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11,
+    full_width = FALSE
+  ) %>%
+  row_spec(mejor_aic, bold = TRUE, background = "#fff3cd") %>%
+  footnote(
+    general = paste("Mejor modelo según AIC:", comparacion$Modelo[mejor_aic]),
+    general_title = ""
+  )
+```
+
+### **ANOVA**
+
+```{r}
+# CÓDIGO CORREGIDO - TABLA ANOVA FUNCIONAL
+
+# 1. Limpiar datos
+datos_limpios <- na.omit(data_modelo[, c("Confianza_binaria", "Sexo", "Edad", 
+                                          "Nivel_educativo", "Inseguridad", 
+                                          "Satisfaccion_democracia", "Victimizacion")])
+
+# 2. Modelos CORREGIDOS (con "binomial" entre comillas)
+mod1 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo, 
+            data = datos_limpios, family = "binomial")
+
+mod2 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad, 
+            data = datos_limpios, family = "binomial")
+
+mod3 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad + 
+              Satisfaccion_democracia, 
+            data = datos_limpios, family = "binomial")
+
+mod4 <- glm(Confianza_binaria ~ Sexo + Edad + Nivel_educativo + Inseguridad + 
+              Satisfaccion_democracia + Victimizacion, 
+            data = datos_limpios, family = "binomial")
+
+# 3. ANOVA
+resultado_anova <- anova(mod1, mod2, mod3, mod4, test = "Chisq")
+
+# 4. Mostrar tabla
+library(knitr)
+kable(resultado_anova,
+      caption = "Tabla 4: Prueba de Razón de Verosimilitud (ANOVA)",
+      digits = c(0, 1, 0, 1, 4)) %>%
+  kable_styling(bootstrap_options = "striped", 
+                font_size = 12,
+                full_width = FALSE)
+```
+
+
+### **Gráfico Odds Ratios**
+
+```{r grafico_odds_corregido, echo=FALSE, fig.height=7, fig.width=10}
+# ============================================
+# GRÁFICO DE ODDS RATIOS - VERSIÓN CORREGIDA
+# ============================================
+
+# Preparar datos del Modelo 4
+coefs_m4 <- coef(m4)
+odds_m4 <- exp(coefs_m4)
+conf_int <- exp(confint(m4))
+
+# Crear dataframe
+datos_grafico <- data.frame(
+  Variable = names(coefs_m4),
+  Odds_Ratio = odds_m4,
+  IC_inf = conf_int[, 1],
+  IC_sup = conf_int[, 2],
+  p_valor = summary(m4)$coefficients[, 4]
+)
+
+# Procesar datos
+datos_grafico <- datos_grafico %>%
+  filter(Variable != "(Intercept)") %>%
+  mutate(
+    # NOMBRES MÁS CLAROS Y COMPLETOS
+    Variable_etiqueta = case_when(
+      Variable == "Edad" ~ "Edad (por cada año)",
+      Variable == "SexoMujer" ~ "Sexo: Mujer (vs. Hombre)",
+      Variable == "Nivel_educativoBaja" ~ "Educación: Baja (vs. Alta)",
+      Variable == "Nivel_educativoMedia" ~ "Educación: Media (vs. Alta)",
+      Variable == "InseguridadSeguro" ~ "Percepción: Seguro (vs. Inseguro)",
+      Variable == "Satisfaccion_democraciaSatisfecho" ~ "Satisfacción democracia: Satisfecho (vs. Insatisfecho)",
+      Variable == "VictimizacionSí" ~ "Victimización: Sí (vs. No)",
+      TRUE ~ Variable
+    ),
+    
+    # CATEGORÍAS COMPLETAS
+    Categoria = case_when(
+      Variable == "Edad" ~ "Demográfico",
+      grepl("Sexo", Variable) ~ "Demográfico",
+      grepl("Nivel_educativo", Variable) ~ "Educación",
+      grepl("Inseguridad", Variable) ~ "Percepción de inseguridad",
+      grepl("Satisfaccion", Variable) ~ "Opinión política",
+      grepl("Victimizacion", Variable) ~ "Experiencia de victimización",
+      TRUE ~ "Otros"
+    ),
+    
+    # Significancia
+    Significativo = p_valor < 0.05,
+    
+    # Color por categoría
+    Color = case_when(
+      Categoria == "Demográfico" ~ "#1f77b4",      # Azul
+      Categoria == "Educación" ~ "#2ca02c",        # Verde
+      Categoria == "Percepción de inseguridad" ~ "#d62728",  # Rojo
+      Categoria == "Opinión política" ~ "#9467bd", # Púrpura
+      Categoria == "Experiencia de victimización" ~ "#ff7f0e", # Naranja
+      TRUE ~ "#7f7f7f"  # Gris
+    )
+  ) %>%
+  arrange(Odds_Ratio)  # Ordenar por Odds Ratio
+
+# PALETA DE COLORES
+colores_categorias <- c(
+  "Demográfico" = "#1f77b4",
+  "Educación" = "#2ca02c",
+  "Percepción de inseguridad" = "#d62728",
+  "Opinión política" = "#9467bd",
+  "Experiencia de victimización" = "#ff7f0e"
+)
+
+# CREAR GRÁFICO CORREGIDO
+ggplot(datos_grafico, aes(x = Odds_Ratio, y = reorder(Variable_etiqueta, Odds_Ratio))) +
+  
+  # Línea de referencia
+  geom_vline(xintercept = 1, linetype = "dashed", color = "gray50", size = 0.8, alpha = 0.7) +
+  
+  # Intervalos de confianza
+  geom_errorbarh(
+    aes(xmin = IC_inf, xmax = IC_sup, color = Categoria),
+    height = 0.15, size = 1, alpha = 0.8
+  ) +
+  
+  # Puntos
+  geom_point(
+    aes(fill = Categoria, size = Significativo),
+    shape = 21, color = "white", stroke = 1.2
+  ) +
+  
+  # ESCALAS
+  scale_x_log10(
+    breaks = c(0.2, 0.5, 1, 2, 5),
+    labels = c("0.2", "0.5", "1", "2", "5")
+  ) +
+  
+  # Colores UNIFICADOS (mismo para color y fill)
+  scale_color_manual(values = colores_categorias, name = "Categoría") +
+  scale_fill_manual(values = colores_categorias, name = "Categoría") +
+  
+  # Tamaño de puntos
+  scale_size_manual(
+    values = c("FALSE" = 3, "TRUE" = 4.5),
+    name = "Significancia",
+    labels = c("No significativo", "p < 0.05")
+  ) +
+  
+  # ETIQUETAS
+  labs(
+    title = "Factores que influyen en la Confianza en la Policía",
+    subtitle = "Odds Ratios del Modelo Completo (Modelo 4)",
+    x = "Odds Ratio (escala logarítmica)",
+    y = NULL,
+    caption = paste(
+      "• OR > 1: Aumenta la probabilidad de confiar",
+      "• OR < 1: Disminuye la probabilidad de confiar",
+      "• Puntos grandes: Estadísticamente significativos (p < 0.05)",
+      sep = "\n"
+    )
+  ) +
+  
+  # TEMA MEJORADO
+  theme_minimal(base_size = 13) +
+  theme(
+    # Títulos
+    plot.title = element_text(
+      face = "bold", 
+      size = 16,
+      hjust = 0.5,
+      margin = margin(b = 8)
+    ),
+    plot.subtitle = element_text(
+      size = 13,
+      color = "gray40",
+      hjust = 0.5,
+      margin = margin(b = 15)
+    ),
+    
+    # Ejes
+    axis.title.x = element_text(size = 12, face = "bold", margin = margin(t = 10)),
+    axis.text.y = element_text(size = 11, hjust = 1, margin = margin(r = 5)),
+    axis.text.x = element_text(size = 10),
+    
+    # Leyenda - POSICIÓN ÚNICA Y CLARA
+    legend.position = "bottom",
+    legend.box = "horizontal",
+    legend.box.just = "center",
+    legend.title = element_text(face = "bold", size = 11),
+    legend.text = element_text(size = 10),
+    legend.margin = margin(t = 5, b = 5),
+    
+    # Grid
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray90", size = 0.3),
+    
+    # Caption
+    plot.caption = element_text(
+      size = 10, 
+      color = "gray50",
+      hjust = 0,
+      lineheight = 1.3,
+      margin = margin(t = 15)
+    ),
+    
+    # Margenes
+    plot.margin = margin(15, 20, 15, 15)
+  ) +
+  
+  # GUÍAS DE LEYENDA UNIFICADAS
+  guides(
+    color = guide_legend(
+      title = "Categoría de Variable",
+      nrow = 2,
+      byrow = TRUE,
+      override.aes = list(size = 3)
+    ),
+    fill = guide_legend(
+      title = "Categoría de Variable",
+      nrow = 2,
+      byrow = TRUE
+    ),
+    size = guide_legend(
+      title = "Significancia estadística",
+      override.aes = list(shape = 21, fill = "gray70")
+    )
+  )
+```
+
+Clusterización {data-icon="fa-table"}
+=====================================     
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+### **Método PAM**
+
+```{r}
+library(cluster)
+library(dplyr)
+
+# 2. CREAR data_cluster (CON GUÍÓN BAJO)
+data_cluster <- data %>%
+  select(
+    # Demográficas
+    Sexo, 
+    Edad, 
+    Nivel_educativo,
+    
+    # Variables centrales del estudio
+    Victimizacion, 
+    Inseguridad, 
+    Satisfaccion_democracia,
+    
+    # Variable dependiente (para perfiles)
+    Confianza_policia
+  ) %>%
+  mutate(across(where(is.character), as.factor))
+g.dist <- daisy(data_cluster, metric = "gower")
+```
+
+```{r}
+# PAM - GRÁFICO LIMPIO (SIN TEXTOS DE FONDO)
+library(cluster)
+
+# Calcular siluetas sin imprimir
+siluetas_pam <- sapply(2:6, function(k) {
+  pam_temp <- pam(g.dist, k = k, diss = TRUE)
+  pam_temp$silinfo$avg.width
+})
+
+k_optimo_pam <- which.max(siluetas_pam) + 1
+
+```
+
+
+```{r}
+# Gráfico ULTRA limpio
+plot(2:6, siluetas_pam, 
+     type = "n",  # Marco vacío primero
+     xlab = "Número de Clusters (k)", 
+     ylab = "Silueta Promedio",
+     main = "k Óptimo - PAM",
+     xaxt = "n",  # Sin números en eje X automáticos
+     yaxt = "n")  # Sin números en eje Y automáticos
+
+# Agregar líneas y puntos
+lines(2:6, siluetas_pam, col = "darkorange", lwd = 2)
+points(2:6, siluetas_pam, pch = 16, col = "darkorange", cex = 1.5)
+
+# Línea vertical óptima
+abline(v = k_optimo_pam, col = "red", lty = 2, lwd = 1.5)
+
+# Eje X personalizado
+axis(1, at = 2:6, labels = 2:6)
+
+# Eje Y personalizado (como en tu imagen)
+valores_y <- seq(0.18, 0.26, by = 0.02)  # Ajusta según tus datos
+axis(2, at = valores_y, labels = valores_y, las = 1)
+
+# Grid sutil
+grid(col = "gray90", lty = 3)
+
+# Mensaje mínimo en consola
+cat("PAM: k óptimo =", k_optimo_pam, "\n")
+```
+
+
+### **Método AGNES**
+
+```{r}
+library(cluster)
+
+siluetas_agnes <- numeric(5)
+
+for(k in 2:6) {
+  agnes_temp <- agnes(g.dist, diss = TRUE, method = "ward")
+  clusters_temp <- cutree(agnes_temp, k = k)
+  siluetas_agnes[k-1] <- mean(silhouette(clusters_temp, g.dist)[, "sil_width"])
+}
+
+k_optimo_agnes <- which.max(siluetas_agnes) + 1
+
+# Gráfico MÍNIMO y SIN TEXTO
+plot(2:6, siluetas_agnes, 
+     type = "o",           # "o" para puntos y líneas (sin "b" que puede causar problemas)
+     col = "steelblue", 
+     lwd = 2,
+     pch = 16,            # 16 es punto sólido pequeño, 19 es grande
+     xlab = "Número de Clusters (k)", 
+     ylab = "Silueta Promedio",
+     main = "k Óptimo - AGNES")
+
+abline(v = k_optimo_agnes, col = "red", lty = 2)
+
+# Solo mensaje esencial
+cat("AGNES: k óptimo =", k_optimo_agnes, "\n")
+```
+
+### **Método DIANA**
+
+```{r}
+# DIANA - GRÁFICO LIMPIO
+library(cluster)
+
+# Calcular siluetas
+siluetas_diana <- sapply(2:6, function(k) {
+  diana_temp <- diana(g.dist, diss = TRUE)
+  clusters_temp <- cutree(diana_temp, k = k)
+  mean(silhouette(clusters_temp, g.dist)[, "sil_width"])
+})
+
+k_optimo_diana <- which.max(siluetas_diana) + 1
+
+# Gráfico limpio
+plot(2:6, siluetas_diana, 
+     type = "n",
+     xlab = "Número de Clusters (k)", 
+     ylab = "Silueta Promedio",
+     main = "k Óptimo - DIANA",
+     xaxt = "n",
+     yaxt = "n")
+
+lines(2:6, siluetas_diana, col = "steelblue", lwd = 2)
+points(2:6, siluetas_diana, pch = 16, col = "steelblue", cex = 1.5)
+abline(v = k_optimo_diana, col = "red", lty = 2, lwd = 1.5)
+
+# Ejes personalizados
+axis(1, at = 2:6, labels = 2:6)
+valores_y_diana <- seq(0.20, 0.32, by = 0.02)  # Ajusta según tus resultados
+axis(2, at = valores_y_diana, labels = valores_y_diana, las = 1)
+
+grid(col = "gray90", lty = 3)
+
+cat("DIANA: k óptimo =", k_optimo_diana, "\n")
+```
+
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+### **Siluetas PAM**
+
+```{r}
+library(cluster)
+library(factoextra)
+
+# 1. Crear pam_resultado si no existe
+if (!exists("pam_resultado")) {
+  # Calcular k óptimo automáticamente
+  siluetas <- sapply(2:6, function(k) {
+    pam(g.dist, k = k, diss = TRUE)$silinfo$avg.width
+  })
+  k_optimo <- which.max(siluetas) + 1
+  pam_resultado <- pam(g.dist, k = k_optimo, diss = TRUE)}
+
+# 2. Gráfico de silueta
+fviz_silhouette(pam_resultado) +
+  ggtitle(paste("Silueta PAM - k =", pam_resultado$clustering_info$k)) +
+  theme_minimal()
+```
+
+
+### **Dendograma AGNES**
+
+```{r}
+# PASO 2: APLICAR AGNES CON k=6
+agnes_resultado <- agnes(g.dist, diss = TRUE, method = "ward")
+clusters_agnes <- cutree(agnes_resultado, k = 6)
+data$Cluster_AGNES <- clusters_agnes
+```
+
+
+```{r}
+# DENDROGRAMA HORIZONTAL CON FACTEXTRA
+library(factoextra)
+
+fviz_dend(agnes_resultado, k = 6,
+          horiz = TRUE,
+          cex = 0.6,
+          k_colors = "jco",
+          rect = TRUE,
+          rect_fill = TRUE,
+          rect_border = "jco",
+          main = "Dendrograma AGNES - k=6 Clusters",
+          xlab = "Observaciones",
+          ylab = "Altura")
+```
+
+
+### **Siluetas AGNES**
+
+```{r}
+# SILUETA AGNES SIN TEXTO EXTRA
+library(factoextra)
+
+sil_agnes_obj <- silhouette(clusters_agnes, g.dist)
+
+fviz_silhouette(sil_agnes_obj, print.summary = FALSE) +
+  labs(
+    title = "Silueta - Método AGNES (k=6)",
+    subtitle = paste("Silueta promedio:", round(mean(sil_agnes_obj[, "sil_width"]), 3))
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_color_brewer(palette = "Set2", guide = "none")
+```
+
+### **Dendograma DIANA**
+
+```{r}
+# PASO 2: APLICAR DIANA
+diana_resultado <- diana(g.dist, diss = TRUE)
+clusters_diana <- cutree(diana_resultado, k = 6)
+data$Cluster_DIANA <- clusters_diana
+```
+
+```{r}
+# DENDROGRAMA DIANA CORREGIDO
+library(factoextra)
+
+fviz_dend(diana_resultado, k = 6,
+          horiz = TRUE,
+          cex = 0.6,
+          k_colors = "jco",  # CORREGIDO: "jco" en lugar de "ucicago"
+          rect = TRUE,
+          rect_fill = TRUE,
+          main = "Dendrograma DIANA - k=6 Clusters",
+          xlab = "Observaciones",
+          ylab = "Altura")
+```
+
+### **Siluetas DIANA**
+
+```{r}
+# PASO 4: SILUETA DIANA
+sil_diana_obj <- silhouette(clusters_diana, g.dist)
+
+fviz_silhouette(sil_diana_obj, print.summary = FALSE) +
+  labs(
+    title = "Silueta - Método DIANA (k=6)",
+    subtitle = paste("Silueta promedio:", round(mean(sil_diana_obj[, "sil_width"]), 3))
+  ) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3") +
+  scale_color_brewer(palette = "Set3", guide = "none")
+```
+
+Factorización {data-icon="fa-table"}
+=====================================     
+
+Column {data-width=500} {.tabset}
+-----------------------------------------------------------------------
+
+```{r}
+# 1. Crear data_efa desde el principio
+vars_efa <- c("Victimizacion", "Inseguridad", "Satisfaccion_democracia", "Confianza_policia")
+data_efa <- data[, vars_efa]
+
+# 2. Eliminar filas con NA
+data_efa <- na.omit(data_efa)
+```
+
+```{r}
+# Convertir TODO a numérico si es necesario
+data_efa_num <- data.frame(
+  Victimizacion = as.numeric(data_efa$Victimizacion),
+  Inseguridad = as.numeric(data_efa$Inseguridad),
+  Satisfaccion_democracia = as.numeric(data_efa$Satisfaccion_democracia),
+  Confianza_policia = as.numeric(data_efa$Confianza_policia)
+)
+```
+
+### **Matriz de corrrelaciones**
+
+```{r}
+library(ggcorrplot)
+
+# Matriz de correlación PEARSON (todas numéricas)
+cor_matrix <- cor(data_efa_num, use = "complete.obs")
+
+ggcorrplot(cor_matrix, 
+           lab = TRUE,
+           title = "Correlaciones entre variables")
+```
+
+### **Verificación factorización**
+
+```{r}
+library(psych)
+
+# Test de Bartlett
+bartlett_test <- cortest.bartlett(cor_matrix, n = nrow(data_efa_num))
+cat("Bartlett p-valor:", round(bartlett_test$p.value, 4), "\n")
+
+# KMO
+kmo_result <- KMO(cor_matrix)
+cat("KMO Total:", round(kmo_result$MSA, 3), "\n")
+```
+
+### **Ejecución EFA**
+
+```{r}
+eigenvals <- eigen(cor_matrix)$values
+n_factores <- sum(eigenvals > 1)
+efa_result <- fa(data_efa_num, nfactors = n_factores, rotate = "varimax", fm = "ml")
+
+# Solo esto
+print(loadings(efa_result), cutoff = 0.3)
+```
+
+### **Gráfico**
+
+```{r}
+fa.diagram(efa_result, 
+           main = "Diagrama de cargas factoriales",
+           digits = 2)
+```
+
+
