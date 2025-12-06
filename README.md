@@ -24,3 +24,8 @@ A continuación, el diccionario de datos:
 | Sexo                      | Sexo del encuestado                                 | Categórica  | Hombre / Mujer |
 | Edad                      | Edad del encuestado                                 | Numérica    | Continua |
 | Nivel_educativo           | Nivel educativo alcanzado                           | Categórica  | Baja / Media / Alta |
+
+
+El enlace para el dashboard es el siguiente:
+
+
