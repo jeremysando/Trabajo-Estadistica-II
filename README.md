@@ -26,9 +26,5 @@ A continuación, el diccionario de datos:
 | Nivel_educativo           | Nivel educativo alcanzado                           | Categórica  | Baja / Media / Alta |
 
 
-El enlace para el dashboard es el siguiente:
-
-file:///Users/yuriani/Desktop/7mo%20ciclo/Estadi%CC%81stica%20II/trabajo_estadisticaII.html
-
 De igual manera, al ser mi html muy pesado y no poder abrirse, lo he subido a RPubs con el objetivo de que se visualice:
-https://rpubs.com/JeremySando/1377173
+https://rpubs.com/JeremySando/1379176
